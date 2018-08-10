@@ -1,0 +1,265 @@
+---
+title: "Kickstarter"
+author: "Meredel Ababa"
+date: "1/15/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+kickstarter = ks_projects_201801
+```
+
+```{r}
+kickdata = ks_projects_201801 # import data
+kickdata$state1 <- kickdata$state # made the state1 column 
+kickdata$state1 <- gsub("canceled|undefined|live|suspended", "null", kickdata$state1) # replaced canceled, undefined, and live with null
+kickdata <- kickdata[kickdata$state1 != "null", ]   # removed null
+kickdata <- kickdata                 # code that removes scientific notation.
+options(scipen=999)  # removes scientific notation
+Kickdata 
+kickdata$state1 = ifelse(kickdata$state =='failed', 0,1) # kickdata 0 is failed and 1 is successful
+```
+
+```{r}
+summary(kickstarter)
+```
+
+```{r}
+
+# creating launched1 as lubridate object
+kickdata$launched1 =          lubridate::as_date(kickdata$launched)
+# creating deadline1 as lubridate object
+kickdata$deadline1 = lubridate::as_date(kickdata$deadline)
+# checking to see all variables
+names(kickdata)
+# creating new duration column
+kickdata$dayz <- kickdata$deadline1 - kickdata$launched1 # called dayz
+head(kickdata)
+# seeing summary on new data set w/new columns
+kickdata$l_time <- format(as.POSIXct(kickdata$launched) ,format = "%H:%M:%S") #extracted time from launched column
+kickdata$d_time <- format(as.POSIXct(kickdata$deadline) ,format = "%H:%M:%S") #extracted time from deadline column
+launched_month = month(as.POSIXlt(kickdata$launched1, format="%Y/%m/%d")) #extract month from launched1 date
+dead_month = month(as.POSIXlt(kickdata$deadline1, format="%Y/%m/%d")) #extract month from deadline1 date
+kickdata=data.frame(kickdata, launched_month) #add launched month to df
+kickdata=data.frame(kickdata, dead_month) #add deadline month to df
+kickdata$launched_month=as.factor(kickdata$launched_month) # launched_month needs to be factor, so we convert factor
+kickdata$dead_month=as.factor(kickdata$dead_month) #dead_month needs to be factor, so we convert to factor
+```
+
+```{r} # function that will take our date, transform to 2012 date, then find the season in which it occured
+getSeason <- function(launched1) {
+    WS <- as.Date("2012-12-15", format = "%Y-%m-%d") # Winter Solstice
+    SE <- as.Date("2012-3-15",  format = "%Y-%m-%d") # Spring Equinox
+    SS <- as.Date("2012-6-15",  format = "%Y-%m-%d") # Summer Solstice
+    FE <- as.Date("2012-9-15",  format = "%Y-%m-%d") # Fall Equinox
+
+    # Convert dates from any year to 2012 dates
+    d <- as.Date(strftime(launched1, format="2012-%m-%d"))
+
+    ifelse (d >= WS | d < SE, "Winter",
+      ifelse (d >= SE & d < SS, "Spring",
+        ifelse (d >= SS & d < FE, "Summer", "Fall")))
+}
+
+kickdata$launch2012 = as.Date(kickdata$launched1, format = "%Y-%m-%d") + 0:331674 #formatting to 2012 
+kickdata$seasonlaunch = as.factor(getSeason(kickdata$launch2012)) #use function to find season for launch 
+kickdata$launch2012 = NULL
+
+kickdata$deadline2012 = as.Date(kickdata$deadline1, format = "%Y-%m-%d") + 0:331674 #formatting to 2012 
+kickdata$seasondeadline = as.factor(getSeason(kickdata$deadline2012))  # use function to find season for deadline
+kickdata$deadline2012 = NULL 
+```
+
+```{r}
+#histogram of backers
+hist(kickdata$backers [kickdata$backers])
+```
+#assessing what type of variable it is. 
+```{r}
+#seeing class of all our variables 
+class(kickdata$state1)
+class(kickdata$backers)
+class(kickdata$goal)
+class(kickdata$l_time)
+class(kickdata$d_time)
+class(kickdata$launched_month)
+class(kickdata$dead_month)
+class(kickdata$name)
+class(kickdata$country)
+class(kickdata$state)
+class(kickdata$usd.pledged)
+class(kickdata$pledged)
+class(kickdata$launched1)
+class(kickdata$dayz)
+```
+
+```{r}
+# dropping variables that won't be included in analysis
+kickdata2 = kickdata
+kickdata2$ID = NULL
+kickdata2$name= NULL
+kickdata2$currency= NULL
+kickdata2$deadline= NULL
+kickdata2$launched= NULL
+kickdata2$launched1= NULL
+kickdata2$deadline1 = NULL
+kickdata2$state = NULL
+kickdata2$pledged = NULL
+kickdata2$usd.pledged=NULL #too correlated with goal
+kickdata$launchyear = format(as.POSIXct(kickdata$launched), format = "%Y") #extracting the correct format for launchyear 
+```
+changing to factor
+```{r}
+# changing variables to factor
+kickdata2$state1 <- factor(kickdata2$state1) 
+kickdata2$category <- factor(kickdata2$category)
+kickdata2$main_category <- factor(kickdata2$main_category)
+kickdata2$country <- factor(kickdata2$country)
+kickdata2$l_time <- factor(kickdata2$l_time)
+kickdata2$d_time <- factor(kickdata2$d_time)
+kickdata2$launched_month <- factor(kickdata2$launched_month)
+kickdata2$dead_month <- factor(kickdata2$dead_month)
+kickdata2$dayz =as.numeric(paste(kickdata2$dayz))
+kickdata2$backers =as.numeric(paste(kickdata2$backers))
+```
+
+split data to training and test set. Unfortunately, will not run.
+```{r}
+set.seed(123)
+train <- sample(1:331675,331675*.70,rep=FALSE) # creating training set of data , 70%
+test <- -train # test set, will be 30%, whatever is left from training set
+kick.train <- kickdata2[train, ] # 
+kick.test <- kickdata2[-train, ]
+#log.regression = glm(state1~ goal+launched_month, data = kick.train, family = binomial(link="logit"))
+#summary(log.regression)
+```
+Error rate is .437826
+```{r}
+qda_model = qda(state1~ launched_month+category+goal+seasonlaunch+dayz, data = kick.train) #QDA model 
+qda_pred = predict(qda_model, kick.test)  # run the model on our test set
+qda_pred_y = qda_pred$class
+table(qda_pred_y, kick.test$state1)
+mean(qda_pred_y != kick.test$state1)
+```
+#Better QDA model, but not by much. Error rate is .4370521
+```{r}
+library(MASS) 
+qda_model = qda(state1~ category+ seasondeadline+goal+seasonlaunch+dayz, data = kick.train)
+qda_pred = predict(qda_model, kick.test)
+qda_pred_y = qda_pred$class
+table(qda_pred_y, kick.test$state1)
+mean(qda_pred_y != kick.test$state1)
+```
+#Performed even worse with error rate of .5602
+```{r}
+class(kickdata2$launched_month)
+qda_model = qda(state1 ~ main_category + seasondeadline + goal + seasonlaunch+dayz+dead_month+launched_month, data = kick.train)
+qda_pred = predict(qda_model, kick.test)
+qda_pred_y = qda_pred$class
+table(qda_pred_y, kick.test$state1)
+mean(qda_pred_y != kick.test$state1)
+```
+Cross validation on QDA : error rate is 34.215, with a K at 10
+```{r}
+CV.qda <- #create CV function
+  function (data, model, dname, K=10, seed=150) {
+    n <- nrow(data)
+    set.seed(seed)
+    dataY=data[,dname]
+
+    f <- ceiling(n/K)
+    s <- sample(rep(1:K, f), n)
+
+    CV=NULL
+
+    for (i in 1:K) {
+      test.out <- seq_len(n)[(s == i)] #test data
+      train.in <- seq_len(n)[(s != i)] #training data
+
+
+      qda.fit=lda(model, data=data[train.in,])
+      qda.y <- data[test.out, dname]
+      qda.predy=predict(qda.fit, data[test.out,])$class
+
+      error= mean(qda.y!=qda.predy)
+      CV=c(CV,error)
+    }
+    list(call = model, K = K,
+         qda_error_rate = paste(100*mean(CV), "%"), seed = seed)
+  }
+err.qda=CV.qda(data = kickdata2, state1~main_category + seasondeadline + goal + seasonlaunch+dayz+dead_month+launched_month, dname = "state1", K=10, seed = 123) #checking error 
+err.qda
+```
+#extracted year from launched so we can use that to compare projects by year
+```{r}
+kickdata$launchyear = format(as.POSIXct(kickdata$launched), format = "%Y")
+```
+```{r}
+library(FNN)
+kickdata3=kickdata2
+kickdata3$category <- NULL
+kickdata3$main_category <- NULL
+kickdata3$country <- NULL
+kickdata3$l_time <- NULL
+kickdata3$d_time <- NULL
+kickdata3$seasonlaunch <- NULL
+kickdata3$seasondeadline <- NULL
+kickdata3$X <- NULL
+kickdata3$dayz =as.numeric(paste(kickdata3$dayz))
+kickdata3$backers =as.numeric(paste(kickdata3$backers))
+kickdata3$goal =as.numeric(paste(kickdata3$goal))
+kickdata3$launched_month =as.numeric(paste(kickdata3$launched_month))
+kickdata3$dead_month =as.numeric(paste(kickdata3$dead_month))
+kickdata3$state1 =as.numeric(paste(kickdata3$state1))
+```
+```{r}
+data = scale(kickdata3[,-c(3,4)]) # scale the variable; while also removing the predictor (state1)
+set.seed(123) #setting seed
+train <- sample(1:331675,331675*.7,rep=FALSE) # creating the training data set 70%
+test <- -train # creating test data set
+training_kick = data[train, ] 
+testing_kick = data[test,]
+summary(data)
+```
+#includes state variable
+```{r}
+training_y = kickdata3$state1[train] # training set
+testing_y = kickdata3$state1[test] # testing set
+```
+library(class) #to be able to run kin()
+set.seed(123) #setting the seed
+knn_pred_y = knn(training_kick, testing_kick, training_y, k = 1) # KNN
+#dim(training_data)
+#length(training_y)
+table(knn_pred_y, testing_y) #Provides the confusion matrix
+mean(knn_pred_y != testing_y) #Misclassification error rate at 0.1133735
+```
+Created a CV KNN Function
+```{r}
+knn_pred_y = NULL
+error_rate = NULL
+# creating function for KNN and getting error rate
+for(i in 1:50){
+set.seed(123)
+knn_pred_y = knn(training_kick,testing_kick,training_y,k=i)
+error_rate[i] = mean(testing_y != knn_pred_y)
+}
+
+### find the minimum error rate
+min_error_rate = min(error_rate)
+print(min_error_rate)
+
+### get the index of that error rate, which is the k
+K = which(error_rate == min_error_rate)
+print(K)
+```
+To visualize the misclassification error rate
+```{r}
+library(ggplot2)
+qplot(1:300, error_rate, xlab = "K",
+ylab = "Error Rate",
+geom=c("point", "line"))
